@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="{{ locale.html_lang() }}" data-theme="corporate">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}App Starter{% endblock %}</title>
+  <script>
+    (() => {
+      const readThemeCookie = () => {
+        const match = document.cookie.match(/(?:^|;\s*)theme=(auto|light|dark)(?:;|$)/);
+        return match ? match[1] : null;
+      };
+      const getSavedMode = () => {
+        try {
+          const stored = localStorage.getItem("theme");
+          if (stored === "auto" || stored === "light" || stored === "dark") return stored;
+        } catch {}
+        return readThemeCookie() || "auto";
+      };
+      const resolveTheme = (mode) => {
+        if (mode === "dark") return "dark";
+        if (mode === "light") return "corporate";
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "corporate";
+      };
+      const syncControls = (mode, resolved) => {
+        const select = document.getElementById("theme-selector");
+        if (select && select.value !== mode) select.value = mode;
+        const quick = document.getElementById("theme-quick-toggle");
+        if (quick) {
+          quick.textContent = resolved === "dark" ? "☀" : "☾";
+          quick.setAttribute("data-resolved-theme", resolved);
+        }
+      };
+      window.__applyTheme = (mode, persist = true, track = false) => {
+        const validMode = mode === "light" || mode === "dark" || mode === "auto" ? mode : "auto";
+        const resolved = resolveTheme(validMode);
+        document.documentElement.setAttribute("data-theme", resolved);
+        document.documentElement.setAttribute("data-theme-mode", validMode);
+        document.documentElement.style.colorScheme = resolved === "dark" ? "dark" : "light";
+        if (persist) {
+          try {
+            localStorage.setItem("theme", validMode);
+          } catch {}
+          document.cookie = `theme=${validMode}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        }
+        syncControls(validMode, resolved);
+        if (track && typeof window.appTrack === "function") {
+          window.appTrack("theme_changed", { mode: validMode, resolved }, false);
+        }
+        return resolved;
+      };
+      window.__toggleTheme = () => {
+        const current = document.documentElement.getAttribute("data-theme");
+        window.__applyTheme(current === "dark" ? "light" : "dark", true, true);
+      };
+      const initialMode = getSavedMode();
+      window.__applyTheme(initialMode, false, false);
+      if (window.matchMedia) {
+        const media = window.matchMedia("(prefers-color-scheme: dark)");
+        const onSystemChange = () => {
+          if (getSavedMode() === "auto") window.__applyTheme("auto", false, false);
+        };
+        if (media.addEventListener) media.addEventListener("change", onSystemChange);
+        else if (media.addListener) media.addListener(onSystemChange);
+      }
+      document.addEventListener("DOMContentLoaded", () => {
+        const mode = getSavedMode();
+        syncControls(mode, resolveTheme(mode));
+      });
+    })();
+  </script>
+  <link rel="stylesheet" href="/assets/app.css" />
+  <script>
+    (() => {
+      const loadTwBrowser = () => {
+        if (getComputedStyle(document.documentElement).getPropertyValue("--app-css-compiled").trim() === "1") return;
+        if (document.getElementById("tw-browser-cdn")) return;
+        const s = document.createElement("script");
+        s.id = "tw-browser-cdn";
+        s.src = "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4";
+        document.head.appendChild(s);
+      };
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", loadTwBrowser);
+      } else {
+        loadTwBrowser();
+      }
+    })();
+  </script>
+  <script src="/assets/htmx.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      if (window.htmx) {
+        htmx.config.responseHandling = [{ code: ".*", swap: true }];
+      }
+    });
+    document.addEventListener("invalid", (event) => {
+      const field = event.target;
+      if (!(field instanceof HTMLInputElement)) return;
+      if (field.validity.valueMissing) {
+        field.setCustomValidity(document.body.dataset.requiredField);
+      } else if (field.type === "email" && field.validity.typeMismatch) {
+        field.setCustomValidity(document.body.dataset.invalidEmail);
+      } else if (field.type === "password" && field.validity.tooShort) {
+        field.setCustomValidity(document.body.dataset.weakPassword);
+      }
+    }, true);
+    const clearValidationMessage = (event) => {
+      if (event.target instanceof HTMLInputElement) event.target.setCustomValidity("");
+    };
+    document.addEventListener("input", clearValidationMessage);
+    document.addEventListener("change", clearValidationMessage);
+  </script>
+</head>
+<body class="min-h-screen bg-base-200 text-base-content"
+  data-required-field="{{ t.required_field }}"
+  data-invalid-email="{{ t.invalid_email }}"
+  data-weak-password="{{ t.weak_password }}">
+  <div class="language-bar">
+    <div class="language-selector">
+      <label for="theme-selector">{{ t.theme_label }}</label>
+      <select id="theme-selector" data-track="theme-selector" onchange="window.__applyTheme(this.value, true, true)">
+        <option value="auto">{{ t.theme_auto }}</option>
+        <option value="light">{{ t.theme_light }}</option>
+        <option value="dark">{{ t.theme_dark }}</option>
+      </select>
+      <button type="button" id="theme-quick-toggle" data-track="theme-quick-toggle" onclick="window.__toggleTheme()" aria-label="{{ t.theme_label }}">☾</button>
+    </div>
+    <form action="/language" method="post" class="language-selector">
+      <input type="hidden" name="return_to" value="{{ return_to }}" />
+      <label for="language">{{ t.language }}</label>
+      <select id="language" name="locale">
+        <option value="pt" lang="pt-BR" {% if locale.is_pt() %}selected{% endif %}>Português</option>
+        <option value="es" lang="es" {% if !locale.is_pt() %}selected{% endif %}>Español</option>
+      </select>
+      <button type="submit">{{ t.apply_language }}</button>
+    </form>
+  </div>
+  <div id="toast-container" class="toast toast-top toast-end z-50"></div>
+  {% block body %}{% endblock %}
+  <script>
+    (() => {
+      const ENDPOINT = "/analytics/collect";
+      const queue = [];
+      let currentPath = window.location.pathname;
+      let visibleStartedAt = document.visibilityState === "visible" ? performance.now() : null;
+      let accumulatedMs = 0;
+      let flushTimer = null;
+      const observedViews = new WeakSet();
+
+      const clientContext = () => {
+        let timezone = null;
+        try {
+          timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+        } catch {}
+        return {
+          timezone,
+          browser_locale: navigator.language || null,
+          viewport: `${window.innerWidth}x${window.innerHeight}`,
+        };
+      };
+
+      const pauseTimer = () => {
+        if (visibleStartedAt !== null) {
+          accumulatedMs += Math.max(0, performance.now() - visibleStartedAt);
+          visibleStartedAt = null;
+        }
+      };
+
+      const resumeTimer = () => {
+        if (document.visibilityState === "visible" && visibleStartedAt === null) {
+          visibleStartedAt = performance.now();
+        }
+      };
+
+      const takeActiveDurationMs = () => {
+        pauseTimer();
+        const total = Math.round(accumulatedMs);
+        accumulatedMs = 0;
+        resumeTimer();
+        return total;
+      };
+
+      const flush = (useBeacon = false) => {
+        if (flushTimer) {
+          clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        if (queue.length === 0) return;
+        const batch = queue.splice(0, 50);
+        const payload = JSON.stringify({
+          ...clientContext(),
+          events: batch,
+        });
+        if (useBeacon && navigator.sendBeacon) {
+          const blob = new Blob([payload], { type: "application/json" });
+          if (navigator.sendBeacon(ENDPOINT, blob)) return;
+        }
+        fetch(ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          keepalive: true,
+          credentials: "same-origin",
+        }).catch(() => {});
+      };
+
+      const enqueue = (ev, immediate = false) => {
+        queue.push(ev);
+        if (immediate || queue.length >= 10) {
+          flush(immediate);
+        } else if (!flushTimer) {
+          flushTimer = setTimeout(() => flush(false), 5000);
+        }
+      };
+
+      const cleanHref = (raw) => {
+        if (!raw) return null;
+        try {
+          const u = new URL(raw, window.location.origin);
+          return u.origin === window.location.origin ? u.pathname : `${u.origin}${u.pathname}`;
+        } catch {
+          return null;
+        }
+      };
+
+      const observeContentViews = () => {
+        if (!("IntersectionObserver" in window)) return;
+        const targets = document.querySelectorAll("[data-track-view]");
+        if (targets.length === 0) return;
+        const observer = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (!entry.isIntersecting) continue;
+              const el = entry.target;
+              if (observedViews.has(el)) continue;
+              observedViews.add(el);
+              observer.unobserve(el);
+              const section = el.getAttribute("data-track-view") || el.id || "section";
+              enqueue({
+                event_type: "custom",
+                event_name: "content_viewed",
+                path: window.location.pathname,
+                page_title: document.title,
+                element_tag: el.tagName.toLowerCase(),
+                element_target: section,
+              });
+            }
+          },
+          { threshold: 0.35 },
+        );
+        for (const el of targets) {
+          if (!observedViews.has(el)) observer.observe(el);
+        }
+      };
+
+      const trackPageView = (referrerOverride = null) => {
+        enqueue({
+          event_type: "page_view",
+          event_name: "page_view",
+          path: window.location.pathname,
+          referrer: referrerOverride || document.referrer || null,
+          page_title: document.title,
+        });
+        observeContentViews();
+      };
+
+      document.addEventListener(
+        "click",
+        (event) => {
+          const rawTarget = event.target instanceof Element ? event.target : null;
+          if (!rawTarget || rawTarget.closest("[data-no-track]")) return;
+          const el =
+            rawTarget.closest("[data-track], a, button, [role='button'], summary, input[type='submit']") ||
+            (rawTarget.id ? rawTarget : null);
+          if (!el) return;
+          const tag = el.tagName.toLowerCase();
+          const href = tag === "a" ? cleanHref(el.getAttribute("href")) : null;
+          const target =
+            el.getAttribute("data-track") ||
+            (el.id ? `#${el.id}` : null) ||
+            href ||
+            tag;
+          const ariaLabel = el.getAttribute("aria-label");
+          const label = ariaLabel
+            ? ariaLabel.trim().slice(0, 120)
+            : tag === "input"
+              ? (el.getAttribute("value") || "").trim().slice(0, 80)
+              : (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120);
+          const xPct = Math.round((event.clientX / Math.max(window.innerWidth, 1)) * 100);
+          const yPct = Math.round((event.clientY / Math.max(window.innerHeight, 1)) * 100);
+
+          enqueue({
+            event_type: "click",
+            event_name: tag === "a" ? "link_click" : "element_click",
+            path: window.location.pathname,
+            page_title: document.title,
+            element_tag: tag,
+            element_label: label || null,
+            element_target: target,
+            click_x_pct: xPct,
+            click_y_pct: yPct,
+          });
+        },
+        { capture: true, passive: true },
+      );
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+          const durationMs = takeActiveDurationMs();
+          if (durationMs > 0) {
+            enqueue(
+              {
+                event_type: "page_leave",
+                event_name: "time_on_page",
+                path: currentPath,
+                page_title: document.title,
+                duration_ms: durationMs,
+              },
+              true,
+            );
+          } else {
+            flush(true);
+          }
+        } else {
+          resumeTimer();
+        }
+      });
+
+      window.addEventListener("pagehide", () => {
+        const durationMs = takeActiveDurationMs();
+        if (durationMs > 0) {
+          enqueue(
+            {
+              event_type: "page_leave",
+              event_name: "time_on_page",
+              path: currentPath,
+              page_title: document.title,
+              duration_ms: durationMs,
+            },
+            true,
+          );
+        } else {
+          flush(true);
+        }
+      });
+
+      document.addEventListener("htmx:afterSettle", () => {
+        if (window.location.pathname !== currentPath) {
+          const prevPath = currentPath;
+          const durationMs = takeActiveDurationMs();
+          if (durationMs > 0) {
+            enqueue({
+              event_type: "page_leave",
+              event_name: "time_on_page",
+              path: prevPath,
+              duration_ms: durationMs,
+            });
+          }
+          currentPath = window.location.pathname;
+          trackPageView(prevPath);
+        } else {
+          observeContentViews();
+        }
+      });
+
+      window.appTrack = (eventName, properties = {}, immediate = false) => {
+        if (!eventName) return;
+        enqueue(
+          {
+            event_type: "custom",
+            event_name: String(eventName).slice(0, 80),
+            path: window.location.pathname,
+            page_title: document.title,
+            properties: properties && typeof properties === "object" ? properties : {},
+          },
+          immediate,
+        );
+      };
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => trackPageView());
+      } else {
+        trackPageView();
+      }
+    })();
+  </script>
+</body>
+</html>

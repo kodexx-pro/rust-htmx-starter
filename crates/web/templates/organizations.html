@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}{{ t.orgs_title }}{% endblock %}
+
+{% block body %}
+<div class="navbar bg-base-100 shadow-sm px-6">
+  <div class="flex-1 gap-3">
+    <a href="/dashboard" class="btn btn-ghost text-xl">{{ t.brand }}</a>
+    <a href="/dashboard" class="btn btn-ghost btn-sm">{{ t.admin_back_dashboard }}</a>
+  </div>
+  <div class="flex-none gap-3">
+    {% if user.is_platform_admin %}
+    <a href="/admin" class="btn btn-outline btn-xs">{{ t.admin_link }}</a>
+    {% endif %}
+    <span class="text-sm hidden sm:inline">{{ user.email }}</span>
+    <form hx-post="/logout">
+      <button type="submit" class="btn btn-ghost btn-sm">{{ t.logout }}</button>
+    </form>
+  </div>
+</div>
+
+<main class="max-w-4xl mx-auto p-6 space-y-6">
+  <div>
+    <h1 class="text-2xl font-bold">{{ t.orgs_heading }}</h1>
+    <p class="text-sm text-base-content/70 mt-1">{{ t.orgs_subtitle }}</p>
+  </div>
+
+  <div id="org-feedback">
+    {% if let Some(msg) = flash_message %}
+    <div role="alert" class="alert alert-success shadow-sm"><span>{{ msg }}</span></div>
+    {% endif %}
+  </div>
+
+  <!-- Troca de organização ativa + criação de nova organização -->
+  <div class="grid gap-6 md:grid-cols-2">
+    <section class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <h2 class="card-title text-lg">{{ t.current_org_label }}</h2>
+        <p class="text-sm font-semibold">{{ organization.name }} <span class="text-base-content/60 font-normal">(@{{ organization.slug }})</span></p>
+        <form action="/organizations/switch" method="post" class="flex flex-wrap items-center gap-2 mt-2">
+          <input type="hidden" name="return_to" value="/organizations" />
+          <select name="organization_id" class="select select-bordered select-sm flex-1">
+            {% for org in all_organizations %}
+            <option value="{{ org.id }}" {% if org.id == organization.id %}selected{% endif %}>{{ org.name }} (@{{ org.slug }})</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-sm btn-primary">{{ t.switch_org_action }}</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <h2 class="card-title text-lg">{{ t.org_create_new_heading }}</h2>
+        <form hx-post="/organizations" hx-target="#org-feedback" hx-swap="innerHTML" class="space-y-3 mt-1">
+          <input type="text" name="name" placeholder="{{ t.org_name_placeholder }}" class="input input-bordered input-sm w-full" minlength="2" maxlength="80" required />
+          <input type="text" name="slug" placeholder="{{ t.org_slug_placeholder }}" class="input input-bordered input-sm w-full" minlength="3" maxlength="50" pattern="[a-z0-9]+(-[a-z0-9]+)*" required />
+          <button type="submit" class="btn btn-sm btn-outline w-full">{{ t.create_org_action }}</button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <!-- Membros -->
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-lg">{{ t.org_members_heading }}</h2>
+      {% if !can_manage_members %}
+      <p class="text-xs text-base-content/70">{{ t.org_readonly_notice }}</p>
+      {% endif %}
+      <div class="overflow-x-auto mt-2">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>{{ t.name }}</th>
+              <th>{{ t.email }}</th>
+              <th>{{ t.org_invite_role_label }}</th>
+              <th>UTC</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for member in members %}
+            <tr>
+              <td class="font-medium">{{ member.name }}</td>
+              <td class="text-xs text-base-content/70">{{ member.email }}</td>
+              <td>
+                {% if can_manage_roles && !member.is_owner %}
+                <form hx-post="/organizations/members/{{ member.user_id }}/role" hx-target="#org-feedback" hx-swap="innerHTML" class="flex items-center gap-1">
+                  <select name="role" class="select select-bordered select-xs">
+                    <option value="member" {% if member.role == "member" %}selected{% endif %}>{{ t.role_member }}</option>
+                    <option value="admin" {% if member.role == "admin" %}selected{% endif %}>{{ t.role_admin }}</option>
+                  </select>
+                  <button type="submit" class="btn btn-xs btn-outline">{{ t.org_save_role }}</button>
+                </form>
+                {% else %}
+                <span class="badge badge-outline badge-sm">{{ member.role_label }}</span>
+                {% endif %}
+              </td>
+              <td class="text-xs text-base-content/60">{{ member.joined_at }}</td>
+              <td class="text-right">
+                {% if can_manage_members && !member.is_owner && !member.is_self %}
+                  {% if can_manage_roles || member.role == "member" %}
+                  <form hx-post="/organizations/members/{{ member.user_id }}/remove" hx-target="#org-feedback" hx-swap="innerHTML" class="inline">
+                    <button type="submit" class="btn btn-xs btn-error btn-outline">{{ t.org_remove_member }}</button>
+                  </form>
+                  {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Convites -->
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body space-y-4">
+      <h2 class="card-title text-lg">{{ t.org_invites_heading }}</h2>
+
+      {% if can_manage_members %}
+      <form hx-post="/organizations/invites" hx-target="#org-feedback" hx-swap="innerHTML" class="flex flex-wrap items-end gap-3">
+        <label class="form-control flex-1 min-w-52">
+          <div class="label py-1"><span class="label-text text-xs">{{ t.email }}</span></div>
+          <input type="email" name="email" placeholder="{{ t.org_invite_email_placeholder }}" class="input input-bordered input-sm w-full" required />
+        </label>
+        <label class="form-control w-40">
+          <div class="label py-1"><span class="label-text text-xs">{{ t.org_invite_role_label }}</span></div>
+          <select name="role" class="select select-bordered select-sm w-full">
+            <option value="member">{{ t.role_member }}</option>
+            <option value="admin">{{ t.role_admin }}</option>
+          </select>
+        </label>
+        <button type="submit" class="btn btn-primary btn-sm">{{ t.org_invite_send }}</button>
+      </form>
+      {% endif %}
+
+      {% if pending_invites.is_empty() %}
+      <p class="text-sm text-base-content/60">{{ t.org_no_pending_invites }}</p>
+      {% else %}
+      <div class="overflow-x-auto">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>{{ t.email }}</th>
+              <th>{{ t.org_invite_role_label }}</th>
+              <th>{{ t.org_expires_at }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inv in pending_invites %}
+            <tr>
+              <td>{{ inv.email }}</td>
+              <td><span class="badge badge-outline badge-sm">{{ inv.role_label }}</span></td>
+              <td class="text-xs text-base-content/70">{{ inv.expires_at }} UTC</td>
+              <td class="text-right">
+                {% if can_manage_members %}
+                <form hx-post="/organizations/invites/{{ inv.id }}/revoke" hx-target="#org-feedback" hx-swap="innerHTML" class="inline">
+                  <button type="submit" class="btn btn-xs btn-ghost text-error">{{ t.org_revoke_invite }}</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+</main>
+{% endblock %}

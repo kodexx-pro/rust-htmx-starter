@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ t.login_title }}{% endblock %}
+
+{% block body %}
+<main class="min-h-screen flex items-center justify-center p-4">
+  <div class="card w-full max-w-md bg-base-100 shadow-xl">
+    <div class="card-body">
+      <h1 class="card-title text-2xl justify-center mb-2">{{ t.login_heading }}</h1>
+
+      <div id="auth-feedback">
+        {% if let Some(msg) = info %}
+          <div role="alert" class="alert alert-success mb-4"><span>{{ msg }}</span></div>
+        {% endif %}
+        {% if let Some(err) = error %}
+          <div role="alert" class="alert alert-error mb-4"><span>{{ err }}</span></div>
+        {% endif %}
+      </div>
+
+      {% include "partials/google_button.html" %}
+
+      <div class="divider text-xs">{{ t.or_text }}</div>
+
+      <form hx-post="/login" hx-target="#auth-feedback" hx-swap="innerHTML" class="space-y-4">
+        {% if let Some(next) = next_url %}
+          <input type="hidden" name="next" value="{{ next }}" />
+        {% endif %}
+        <label class="form-control w-full">
+          <div class="label"><span class="label-text">{{ t.email }}</span></div>
+          <input type="email" name="email" placeholder="{{ t.email_placeholder }}" class="input input-bordered w-full" required />
+        </label>
+
+        <label class="form-control w-full">
+          <div class="label">
+            <span class="label-text">{{ t.password }}</span>
+            <a href="/forgot-password" class="label-text-alt link link-primary">{{ t.forgot_password_link }}</a>
+          </div>
+          <input type="password" name="password" placeholder="••••••••" class="input input-bordered w-full" required />
+        </label>
+
+        <button type="submit" class="btn btn-primary w-full">
+          {{ t.login_action }}
+          <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+        </button>
+      </form>
+
+      <p class="text-center text-sm mt-4">
+        {{ t.no_account }} <a href="/register" class="link link-primary font-medium">{{ t.create_account }}</a>
+      </p>
+    </div>
+  </div>
+</main>
+{% endblock %}

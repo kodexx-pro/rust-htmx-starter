@@ -1,0 +1,53 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: rust-htmx-starter-db
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron
+      - -c
+      - cron.database_name=app_starter
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app_starter
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app_starter"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rust-htmx-starter-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/app_starter
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      APP_SECRET: ${APP_SECRET:-troque-esta-chave-por-uma-string-aleatoria-com-pelo-menos-64-bytes-em-producao}
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_123456789}
+      EMAIL_FROM: ${EMAIL_FROM:-Sistema <onboarding@resend.dev>}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      RUST_LOG: ${RUST_LOG:-web=info,tower_http=info,sqlx=warn}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+
+volumes:
+  pgdata:

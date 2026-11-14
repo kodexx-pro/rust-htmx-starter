@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ t.invite_accept_title }}{% endblock %}
+
+{% block body %}
+<main class="min-h-screen flex items-center justify-center p-4">
+  <div class="card w-full max-w-md bg-base-100 shadow-xl">
+    <div class="card-body space-y-4">
+      <div id="invite-feedback"></div>
+
+      {% if invite_valid %}
+      <h1 class="card-title text-2xl">{{ t.invite_accept_heading }}</h1>
+      <p class="text-sm text-base-content/75">
+        {{ t.invite_accept_subtitle }} <strong>{{ role_label }}</strong>:
+      </p>
+      <div class="rounded-box bg-base-200 p-4 space-y-1">
+        <div class="font-semibold text-base">{{ organization_name }}</div>
+        <div class="text-xs text-base-content/60">@{{ organization_slug }}</div>
+        <div class="text-xs text-base-content/70 pt-1">{{ t.email }}: {{ invited_email }}</div>
+      </div>
+
+      <p class="text-xs text-base-content/60">{{ t.invite_logged_as }}: <strong>{{ user.email }}</strong></p>
+
+      {% if email_matches %}
+      <form hx-post="/invites/accept" hx-target="#invite-feedback" hx-swap="innerHTML">
+        <input type="hidden" name="token" value="{{ token }}" />
+        <button type="submit" class="btn btn-primary w-full">{{ t.invite_accept_action }}</button>
+      </form>
+      {% else %}
+      <div role="alert" class="alert alert-warning text-sm">
+        <span>{{ t.invite_email_mismatch }}</span>
+      </div>
+      <a href="/dashboard" class="btn btn-outline w-full">{{ t.admin_back_dashboard }}</a>
+      {% endif %}
+
+      {% else %}
+      <h1 class="card-title text-xl">{{ t.invite_invalid_heading }}</h1>
+      <div role="alert" class="alert alert-error text-sm">
+        <span>{{ t.invalid_token }}</span>
+      </div>
+      <a href="/dashboard" class="btn btn-outline w-full">{{ t.admin_back_dashboard }}</a>
+      {% endif %}
+    </div>
+  </div>
+</main>
+{% endblock %}

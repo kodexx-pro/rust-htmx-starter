@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ t.dashboard_title }}{% endblock %}
+
+{% block body %}
+<div class="navbar bg-base-100 shadow-sm px-6">
+  <div class="flex-1">
+    <a href="/" class="btn btn-ghost text-xl">{{ t.brand }}</a>
+  </div>
+  <div class="flex-none gap-3">
+    {% if user.is_platform_admin %}
+    <a href="/admin" class="btn btn-outline btn-xs">{{ t.admin_link }}</a>
+    {% endif %}
+    <span class="text-sm hidden sm:inline">{{ user.email }}</span>
+    <form hx-post="/logout">
+      <button type="submit" class="btn btn-ghost btn-sm">{{ t.logout }}</button>
+    </form>
+  </div>
+</div>
+
+<main class="max-w-3xl mx-auto p-6">
+  {% if verified_just_now %}
+  <div role="alert" class="alert alert-success mb-6 shadow-sm">
+    <span>{{ t.verified_success }}</span>
+  </div>
+  {% endif %}
+
+  {% include "partials/verification_banner.html" %}
+
+  <div class="card bg-base-100 shadow-md" data-track-view="dashboard-overview">
+    <div class="card-body">
+      <div class="flex items-center justify-between">
+        <h2 class="card-title">{{ t.welcome }}, {{ user.name }}</h2>
+        {% let email_verified = user.email_verified %}
+        {% include "partials/verification_badge.html" %}
+      </div>
+      <p class="text-base-content/70 mt-2">
+        {{ t.dashboard_description }}
+      </p>
+      <div class="divider my-3"></div>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-wide text-base-content/60">{{ t.current_org_label }}</div>
+          <div class="font-semibold text-base">{{ organization.name }}</div>
+          <div class="text-sm text-base-content/60">@{{ organization.slug }}</div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="badge badge-outline">{{ organization_role }}</span>
+          {% if all_organizations.len() > 1 %}
+          <form action="/organizations/switch" method="post" class="flex items-center gap-1">
+            <input type="hidden" name="return_to" value="/dashboard" />
+            <select name="organization_id" class="select select-bordered select-xs" data-track="dashboard-org-switcher">
+              {% for org in all_organizations %}
+              <option value="{{ org.id }}" {% if org.id == organization.id %}selected{% endif %}>{{ org.name }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-xs btn-ghost">{{ t.switch_org_action }}</button>
+          </form>
+          {% endif %}
+          <a href="/organizations" class="btn btn-xs btn-outline" data-track="dashboard-manage-org">{{ t.manage_org_link }}</a>
+        </div>
+      </div>
+      <div class="divider my-3"></div>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div class="text-xs uppercase tracking-wide text-base-content/60">{{ t.sub_section_label }}</div>
+          <div class="text-sm font-medium">
+            {% if let Some(plan) = subscription.plan_name %}{{ plan }}{% else %}{{ t.sub_no_plan }}{% endif %}
+          </div>
+          {% if let Some(period_end) = subscription.current_period_end %}
+          <div class="text-xs text-base-content/60">{{ t.sub_period_end_label }}: {{ period_end }} UTC</div>
+          {% endif %}
+        </div>
+        <span class="badge {{ subscription_badge_class }}">{{ subscription_label }}</span>
+      </div>
+    </div>
+  </div>
+<script>
+  (() => {
+    const source = new EventSource("/events");
+
+    const showToast = (html) => {
+      const container = document.getElementById("toast-container");
+      if (!container) return;
+      container.innerHTML = html;
+      setTimeout(() => {
+        if (container.innerHTML === html) container.innerHTML = "";
+      }, 5000);
+    };
+
+    source.addEventListener("email-verified", (event) => {
+      const data = JSON.parse(event.data);
+      const badge = document.getElementById("verification-badge");
+      if (badge && data.badge_html) {
+        badge.outerHTML = data.badge_html;
+      }
+      const banner = document.getElementById("verification-banner");
+      if (banner) {
+        banner.innerHTML = "";
+      }
+      if (data.toast_html) {
+        showToast(data.toast_html);
+      }
+    });
+
+    source.addEventListener("session-revoked", (event) => {
+      source.close();
+      window.location.assign(event.data || "/login");
+    });
+  })();
+</script>
+</main>
+{% endblock %}

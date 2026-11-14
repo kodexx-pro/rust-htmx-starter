@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ t.onboarding_title }}{% endblock %}
+
+{% block body %}
+<div class="navbar bg-base-100 shadow-sm px-6">
+  <div class="flex-1">
+    <a href="/" class="btn btn-ghost text-xl">{{ t.brand }}</a>
+  </div>
+  <div class="flex-none gap-3">
+    {% if user.is_platform_admin %}
+    <a href="/admin" class="btn btn-outline btn-xs">{{ t.admin_link }}</a>
+    {% endif %}
+    <span class="text-sm hidden sm:inline">{{ user.email }}</span>
+    <form hx-post="/logout">
+      <button type="submit" class="btn btn-ghost btn-sm">{{ t.logout }}</button>
+    </form>
+  </div>
+</div>
+
+<main class="max-w-xl mx-auto p-6">
+  {% if verified_just_now %}
+  <div role="alert" class="alert alert-success mb-6 shadow-sm">
+    <span>{{ t.verified_success }}</span>
+  </div>
+  {% endif %}
+
+  {% include "partials/verification_banner.html" %}
+
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <h1 class="card-title text-2xl">{{ t.onboarding_heading }}</h1>
+      <p class="text-base-content/70 text-sm mb-2">{{ t.onboarding_subtitle }}</p>
+
+      <div id="onboarding-feedback"></div>
+
+      <form hx-post="/onboarding" hx-target="#onboarding-feedback" hx-swap="innerHTML" class="space-y-4">
+        <label class="form-control w-full">
+          <div class="label"><span class="label-text">{{ t.org_name_label }}</span></div>
+          <input
+            id="org-name"
+            type="text"
+            name="name"
+            placeholder="{{ t.org_name_placeholder }}"
+            class="input input-bordered w-full"
+            minlength="2"
+            maxlength="80"
+            required
+          />
+        </label>
+
+        <label class="form-control w-full">
+          <div class="label"><span class="label-text">{{ t.org_slug_label }}</span></div>
+          <label class="input input-bordered flex items-center gap-2 w-full">
+            <span class="text-base-content/50 select-none">@</span>
+            <input
+              id="org-slug"
+              type="text"
+              name="slug"
+              placeholder="{{ t.org_slug_placeholder }}"
+              class="grow"
+              minlength="3"
+              maxlength="50"
+              pattern="[a-z0-9]+(-[a-z0-9]+)*"
+              required
+            />
+          </label>
+          <div class="label">
+            <span class="label-text-alt text-base-content/60">{{ t.org_slug_hint }}</span>
+          </div>
+        </label>
+
+        <button type="submit" class="btn btn-primary w-full">
+          {{ t.create_org_action }}
+          <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+</main>
+
+<script>
+  (() => {
+    const nameInput = document.getElementById("org-name");
+    const slugInput = document.getElementById("org-slug");
+    if (!nameInput || !slugInput) return;
+
+    let slugEditedManually = false;
+
+    const toSlug = (value) =>
+      value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 50);
+
+    nameInput.addEventListener("input", () => {
+      if (!slugEditedManually) {
+        slugInput.value = toSlug(nameInput.value);
+      }
+    });
+
+    slugInput.addEventListener("input", () => {
+      slugEditedManually = slugInput.value.trim().length > 0;
+    });
+  })();
+</script>
+{% endblock %}

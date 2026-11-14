@@ -1,0 +1,6 @@
+target/
+.git/
+.env
+pgdata/
+tailwindcss*
+crates/web/assets/daisyui*.mjs

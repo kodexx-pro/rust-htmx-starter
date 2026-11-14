@@ -1,0 +1,5 @@
+{% if email_verified %}
+<span id="verification-badge" class="badge badge-success">{{ t.verified_label }}</span>
+{% else %}
+<span id="verification-badge" class="badge badge-warning">{{ t.awaiting_verification }}</span>
+{% endif %}

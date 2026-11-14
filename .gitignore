@@ -1,0 +1,23 @@
+# Rust
+/target
+target/
+**/*.rs.bk
+*.pdb
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Project-specific generated assets
+crates/web/assets/daisyui.mjs
+crates/web/assets/daisyui-theme.mjs

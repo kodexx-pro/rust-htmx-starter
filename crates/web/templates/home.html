@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ t.home_title }}{% endblock %}
+
+{% block body %}
+<main class="home-page">
+  <p class="home-brand">{{ t.brand }}</p>
+  <h1>{{ t.home_title }}</h1>
+  <p>{{ t.home_description }}</p>
+  <nav class="home-links" aria-label="{{ t.home_dashboard }}">
+    <a href="/dashboard" data-track="home-dashboard">{{ t.home_dashboard }}</a>
+    <a href="/login" data-track="home-login">{{ t.login_action }}</a>
+    <a href="/register" data-track="home-register">{{ t.create_account }}</a>
+  </nav>
+</main>
+{% endblock %}

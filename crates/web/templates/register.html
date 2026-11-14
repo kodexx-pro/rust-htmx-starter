@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ t.register_title }}{% endblock %}
+
+{% block body %}
+<main class="min-h-screen flex items-center justify-center p-4">
+  <div class="card w-full max-w-md bg-base-100 shadow-xl">
+    <div class="card-body">
+      <h1 class="card-title text-2xl justify-center mb-2">{{ t.register_heading }}</h1>
+
+      <div id="auth-feedback">
+        {% if !registration_enabled %}
+        <div role="alert" class="alert alert-warning mb-4"><span>{{ t.registration_disabled }}</span></div>
+        {% endif %}
+      </div>
+
+      {% include "partials/google_button.html" %}
+
+      <div class="divider text-xs">{{ t.or_text }}</div>
+
+      <form hx-post="/register" hx-target="#auth-feedback" hx-swap="innerHTML" class="space-y-4">
+        {% if let Some(next) = next_url %}
+          <input type="hidden" name="next" value="{{ next }}" />
+        {% endif %}
+        <label class="form-control w-full">
+          <div class="label"><span class="label-text">{{ t.name }}</span></div>
+          <input type="text" name="name" placeholder="{{ t.name_placeholder }}" class="input input-bordered w-full" required />
+        </label>
+
+        <label class="form-control w-full">
+          <div class="label"><span class="label-text">{{ t.email }}</span></div>
+          <input type="email" name="email" placeholder="{{ t.email_placeholder }}" class="input input-bordered w-full" required />
+        </label>
+
+        <label class="form-control w-full">
+          <div class="label"><span class="label-text">{{ t.password_min }}</span></div>
+          <input type="password" name="password" minlength="8" placeholder="••••••••" class="input input-bordered w-full" required />
+        </label>
+
+        <button type="submit" class="btn btn-primary w-full">
+          {{ t.register_action }}
+          <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+        </button>
+      </form>
+
+      <p class="text-center text-sm mt-4">
+        {{ t.has_account }} <a href="/login" class="link link-primary font-medium">{{ t.login_link }}</a>
+      </p>
+    </div>
+  </div>
+</main>
+{% endblock %}

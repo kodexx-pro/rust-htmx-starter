@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/app_starter
+
+jobs:
+  check-and-test:
+    name: Format, Clippy & Tests (PostgreSQL 17 + pg_cron)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start PostgreSQL 17 with pg_cron
+        run: |
+          docker build -f Dockerfile.postgres -t app-postgres:17 .
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=app_starter \
+            -p 5432:5432 \
+            app-postgres:17 \
+            -c shared_preload_libraries=pg_cron \
+            -c cron.database_name=app_starter
+          for i in $(seq 1 30); do
+            if docker exec ci-postgres pg_isready -U postgres -d app_starter >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run full workspace test suite
+        run: cargo test --workspace -- --include-ignored
+
+      - name: Cleanup PostgreSQL
+        if: always()
+        run: docker rm -f ci-postgres || true

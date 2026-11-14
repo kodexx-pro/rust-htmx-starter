@@ -1,0 +1,539 @@
+{% extends "base.html" %}
+{% block title %}{{ t.admin_title }}{% endblock %}
+
+{% block body %}
+<div class="navbar bg-base-100 shadow-sm px-6">
+  <div class="flex-1 gap-2">
+    <a href="/" class="btn btn-ghost text-xl">{{ t.brand }}</a>
+    <span class="badge badge-primary badge-outline">Admin</span>
+  </div>
+  <div class="flex-none gap-3">
+    <a href="/dashboard" class="btn btn-ghost btn-sm">{{ t.admin_back_dashboard }}</a>
+    <span class="text-sm hidden md:inline text-base-content/70">{{ admin.email }}</span>
+    <form hx-post="/logout">
+      <button type="submit" class="btn btn-ghost btn-sm">{{ t.logout }}</button>
+    </form>
+  </div>
+</div>
+
+<main class="max-w-6xl mx-auto p-6 space-y-6">
+  <header class="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold">{{ t.admin_title }}</h1>
+      <p class="text-sm text-base-content/70">{{ t.admin_subtitle }}</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="/healthz" target="_blank" class="btn btn-outline btn-xs">/healthz</a>
+      <a href="/metrics" target="_blank" class="btn btn-outline btn-xs">/metrics</a>
+    </div>
+  </header>
+
+  <div id="admin-feedback">
+    {% if let Some(msg) = flash_message %}
+    <div role="alert" class="alert alert-success shadow-sm">
+      <span>{{ msg }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Métricas gerais -->
+  <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="stat bg-base-100 rounded-box shadow-sm">
+      <div class="stat-title">{{ t.admin_metrics_users }}</div>
+      <div class="stat-value text-2xl">{{ metrics.total_users }}</div>
+      <div class="stat-desc">
+        {{ metrics.verified_users }} verif. · {{ metrics.admin_users }} admin · {{ metrics.suspended_users }} susp.
+      </div>
+    </div>
+    <div class="stat bg-base-100 rounded-box shadow-sm">
+      <div class="stat-title">{{ t.admin_metrics_orgs }}</div>
+      <div class="stat-value text-2xl">{{ metrics.total_orgs }}</div>
+      <div class="stat-desc">{{ metrics.active_subscriptions }} {{ t.admin_metrics_active_subs }}</div>
+    </div>
+    <div class="stat bg-base-100 rounded-box shadow-sm">
+      <div class="stat-title">{{ t.admin_metrics_cache }}</div>
+      <div class="stat-value text-2xl">{{ metrics.cache_entries }}</div>
+      <div class="stat-desc">UNLOGGED PostgreSQL</div>
+    </div>
+    <div class="stat bg-base-100 rounded-box shadow-sm">
+      <div class="stat-title">{{ t.admin_metrics_cron }}</div>
+      <div class="stat-value text-2xl">{% if cron_enabled %}ON{% else %}OFF{% endif %}</div>
+      <div class="stat-desc">{{ cron_jobs.len() }} jobs · log: {{ log_format }}</div>
+    </div>
+  </section>
+
+  <!-- Configurações em tempo real & Tracing -->
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-lg">{{ t.admin_settings_heading }}</h2>
+      <form action="/admin/settings" method="post" class="space-y-4 mt-2">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <label class="label cursor-pointer justify-start gap-3 bg-base-200/60 rounded-lg p-3">
+            <input type="checkbox" name="registration_enabled" value="1" class="toggle toggle-primary" {% if settings.registration_enabled %}checked{% endif %} />
+            <span class="label-text text-sm">{{ t.admin_registration_toggle }}</span>
+          </label>
+
+          <label class="label cursor-pointer justify-start gap-3 bg-base-200/60 rounded-lg p-3">
+            <input type="checkbox" name="google_oauth_enabled" value="1" class="toggle toggle-primary" {% if settings.google_oauth_enabled %}checked{% endif %} />
+            <span class="label-text text-sm">{{ t.admin_google_toggle }}</span>
+          </label>
+
+          <label class="label cursor-pointer justify-start gap-3 bg-base-200/60 rounded-lg p-3">
+            <input type="checkbox" name="maintenance_mode" value="1" class="toggle toggle-warning" {% if settings.maintenance_mode %}checked{% endif %} />
+            <span class="label-text text-sm">{{ t.admin_maintenance_toggle }}</span>
+          </label>
+        </div>
+
+        <label class="form-control w-full">
+          <div class="label"><span class="label-text">{{ t.admin_log_filter_label }}</span></div>
+          <input type="text" name="log_filter" value="{{ log_filter }}" class="input input-bordered font-mono text-sm w-full" placeholder="web=info,tower_http=info,sqlx=warn" />
+        </label>
+
+        <div>
+          <button type="submit" class="btn btn-primary btn-sm">{{ t.admin_save_settings }}</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- Operações: Cache, pgboss e pg_cron -->
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="card-title text-lg">{{ t.admin_ops_heading }}</h2>
+        <div class="flex flex-wrap gap-2">
+          <form action="/admin/cache/purge-expired" method="post">
+            <button type="submit" class="btn btn-outline btn-xs">{{ t.admin_purge_cache }}</button>
+          </form>
+          <form action="/admin/cache/clear" method="post">
+            <button type="submit" class="btn btn-outline btn-warning btn-xs">{{ t.admin_clear_cache }}</button>
+          </form>
+          <form action="/admin/jobs/retry-failed" method="post">
+            <button type="submit" class="btn btn-outline btn-xs" {% if failed_jobs_total == 0 %}disabled{% endif %}>
+              {{ t.admin_retry_jobs }} ({{ failed_jobs_total }})
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {% if !queues.is_empty() %}
+      <div class="overflow-x-auto">
+        <table class="table table-xs">
+          <thead>
+            <tr>
+              <th>Queue (pgboss)</th>
+              <th>created</th>
+              <th>retry</th>
+              <th>active</th>
+              <th>failed</th>
+              <th>completed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for q in queues %}
+            <tr>
+              <td class="font-mono">{{ q.name }}</td>
+              <td>{{ q.created }}</td>
+              <td>{{ q.retry }}</td>
+              <td>{{ q.active }}</td>
+              <td>{{ q.failed }}</td>
+              <td>{{ q.completed }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if cron_enabled && !cron_jobs.is_empty() %}
+      <div class="overflow-x-auto">
+        <table class="table table-xs">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Job (pg_cron)</th>
+              <th>Schedule</th>
+              <th>Command</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in cron_jobs %}
+            <tr>
+              <td>{{ job.jobid }}</td>
+              <td class="font-mono">{% if let Some(name) = job.jobname %}{{ name }}{% else %}-{% endif %}</td>
+              <td class="font-mono">{{ job.schedule }}</td>
+              <td class="font-mono max-w-xs truncate">{{ job.command }}</td>
+              <td>
+                {% if job.active %}
+                <span class="badge badge-success badge-xs">ativo</span>
+                {% else %}
+                <span class="badge badge-ghost badge-xs">pausado</span>
+                {% endif %}
+              </td>
+              <td>
+                <form action="/admin/cron/{{ job.jobid }}/toggle" method="post">
+                  <button type="submit" class="btn btn-ghost btn-xs">
+                    {% if job.active %}Pausar{% else %}Ativar{% endif %}
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if !cron_runs.is_empty() %}
+      <div class="overflow-x-auto">
+        <table class="table table-xs">
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Job</th>
+              <th>Status</th>
+              <th>Retorno</th>
+              <th>Início</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in cron_runs %}
+            <tr>
+              <td>{{ run.runid }}</td>
+              <td>{% if let Some(jid) = run.jobid %}{{ jid }}{% else %}-{% endif %}</td>
+              <td>{% if let Some(st) = run.status %}{{ st }}{% else %}-{% endif %}</td>
+              <td class="font-mono max-w-xs truncate">{% if let Some(msg) = run.return_message %}{{ msg }}{% else %}-{% endif %}</td>
+              <td class="font-mono text-xs">{% if let Some(ts) = run.start_time %}{{ ts }}{% else %}-{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- Usuários -->
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="card-title text-lg">{{ t.admin_users_heading }}</h2>
+        <form action="/admin" method="get" class="flex gap-2">
+          <input type="search" name="q" value="{{ search_query }}" placeholder="{{ t.admin_search_placeholder }}" class="input input-bordered input-xs w-56" />
+          <button type="submit" class="btn btn-outline btn-xs">{{ t.admin_search_action }}</button>
+        </form>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="table table-xs">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>E-mail</th>
+              <th>Orgs</th>
+              <th>Status</th>
+              <th>Criado (UTC)</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>{{ u.name }}</td>
+              <td class="font-mono">{{ u.email }}</td>
+              <td>{{ u.org_count }}</td>
+              <td class="space-x-1">
+                {% if u.is_platform_admin %}
+                <span class="badge badge-primary badge-xs">Admin</span>
+                {% endif %}
+                {% if u.email_verified %}
+                <span class="badge badge-success badge-xs">Verif.</span>
+                {% endif %}
+                {% if u.is_suspended %}
+                <span class="badge badge-error badge-xs">Suspenso</span>
+                {% endif %}
+              </td>
+              <td class="font-mono text-xs">{{ u.created_at }}</td>
+              <td class="flex gap-1">
+                {% if u.id != admin.id %}
+                <form action="/admin/users/{{ u.id }}/toggle-admin" method="post">
+                  <button type="submit" class="btn btn-ghost btn-xs">
+                    {% if u.is_platform_admin %}Remover Admin{% else %}Tornar Admin{% endif %}
+                  </button>
+                </form>
+                <form action="/admin/users/{{ u.id }}/toggle-suspend" method="post">
+                  <button type="submit" class="btn btn-ghost btn-xs text-error">
+                    {% if u.is_suspended %}Reativar{% else %}Suspender{% endif %}
+                  </button>
+                </form>
+                {% else %}
+                <span class="text-xs text-base-content/50">você</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Organizações e Assinaturas Stripe (vendas por negociação) -->
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-lg">{{ t.admin_orgs_heading }}</h2>
+      <div class="overflow-x-auto">
+        <table class="table table-xs">
+          <thead>
+            <tr>
+              <th>Organização</th>
+              <th>Membros</th>
+              <th>Status</th>
+              <th>Plano / Negociação</th>
+              <th>Stripe Customer / Sub</th>
+              <th>Ciclo</th>
+              <th>Atualizar</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for org in organizations %}
+            <tr>
+              <td>
+                <div class="font-medium">{{ org.name }}</div>
+                <div class="font-mono text-xs text-base-content/60">@{{ org.slug }} · {{ org.created_at }}</div>
+              </td>
+              <td>{{ org.member_count }}</td>
+              <td>
+                <span class="badge badge-xs {% if org.sub_status == "active" %}badge-success{% else if org.sub_status == "trialing" %}badge-info{% else if org.sub_status == "past_due" %}badge-warning{% else if org.sub_status == "canceled" %}badge-error{% else %}badge-ghost{% endif %}">
+                  {{ org.sub_status }}
+                </span>
+              </td>
+              <td colspan="4">
+                <form action="/admin/organizations/{{ org.id }}/subscription" method="post" class="flex flex-wrap items-center gap-2">
+                  <select name="status" class="select select-bordered select-xs">
+                    <option value="inactive" {% if org.sub_status == "inactive" %}selected{% endif %}>inactive</option>
+                    <option value="trialing" {% if org.sub_status == "trialing" %}selected{% endif %}>trialing</option>
+                    <option value="active" {% if org.sub_status == "active" %}selected{% endif %}>active</option>
+                    <option value="past_due" {% if org.sub_status == "past_due" %}selected{% endif %}>past_due</option>
+                    <option value="paused" {% if org.sub_status == "paused" %}selected{% endif %}>paused</option>
+                    <option value="canceled" {% if org.sub_status == "canceled" %}selected{% endif %}>canceled</option>
+                  </select>
+                  <input type="text" name="plan_name" value="{% if let Some(p) = org.plan_name %}{{ p }}{% endif %}" placeholder="Plano negociado" class="input input-bordered input-xs w-36" />
+                  <input type="text" name="stripe_customer_id" value="{% if let Some(c) = org.stripe_customer_id %}{{ c }}{% endif %}" placeholder="cus_..." class="input input-bordered input-xs font-mono w-32" />
+                  <input type="text" name="stripe_subscription_id" value="{% if let Some(s) = org.stripe_subscription_id %}{{ s }}{% endif %}" placeholder="sub_..." class="input input-bordered input-xs font-mono w-32" />
+                  <span class="font-mono text-xs text-base-content/60">{% if let Some(end) = org.current_period_end %}{{ end }}{% else %}-{% endif %}</span>
+                  <button type="submit" class="btn btn-outline btn-xs">Salvar</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Analytics de Uso & Telemetria -->
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="card-title text-lg">{{ t.admin_analytics_heading }}</h2>
+        <span class="badge badge-ghost badge-sm font-mono">queue: {{ analytics_queue_pending }}</span>
+      </div>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="stat bg-base-200/60 rounded-box p-3">
+          <div class="stat-title text-xs">{{ t.admin_analytics_views_24h }}</div>
+          <div class="stat-value text-xl">{{ analytics_summary.page_views_24h }}</div>
+        </div>
+        <div class="stat bg-base-200/60 rounded-box p-3">
+          <div class="stat-title text-xs">{{ t.admin_analytics_clicks_24h }}</div>
+          <div class="stat-value text-xl">{{ analytics_summary.clicks_24h }}</div>
+        </div>
+        <div class="stat bg-base-200/60 rounded-box p-3">
+          <div class="stat-title text-xs">{{ t.admin_analytics_visitors_24h }}</div>
+          <div class="stat-value text-xl">{{ analytics_summary.unique_visitors_24h }}</div>
+          <div class="stat-desc">{{ analytics_summary.identified_users_24h }} auth</div>
+        </div>
+        <div class="stat bg-base-200/60 rounded-box p-3">
+          <div class="stat-title text-xs">{{ t.admin_analytics_avg_time }}</div>
+          <div class="stat-value text-xl">{{ analytics_summary.avg_duration_secs }}s</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div>
+          <h3 class="font-semibold text-sm mb-2">{{ t.admin_analytics_top_pages }}</h3>
+          <table class="table table-xs">
+            <thead>
+              <tr>
+                <th>Rota</th>
+                <th>Views</th>
+                <th>Tempo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in analytics_top_pages %}
+              <tr>
+                <td class="font-mono text-xs">{{ row.path }}</td>
+                <td>{{ row.views }}</td>
+                <td>{{ row.avg_duration_secs }}s</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-sm mb-2">{{ t.admin_analytics_top_clicks }}</h3>
+          <table class="table table-xs">
+            <thead>
+              <tr>
+                <th>Alvo</th>
+                <th>Cliques</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in analytics_top_clicks %}
+              <tr>
+                <td>
+                  <div class="font-mono text-xs">{{ row.element_target }}</div>
+                  {% if let Some(lbl) = row.element_label %}
+                  <div class="text-[10px] text-base-content/60 max-w-44 truncate">{{ lbl }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ row.clicks }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-sm mb-2">{{ t.admin_analytics_locations }}</h3>
+          <table class="table table-xs">
+            <thead>
+              <tr>
+                <th>Local / Fuso</th>
+                <th>Eventos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in analytics_locations %}
+              <tr>
+                <td class="text-xs">{{ row.location_label }}</td>
+                <td>{{ row.events_count }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="font-semibold text-sm mb-2">{{ t.admin_analytics_recent }}</h3>
+        <div class="overflow-x-auto">
+          <table class="table table-xs">
+            <thead>
+              <tr>
+                <th>UTC</th>
+                <th>Tipo</th>
+                <th>Usuário / Visitante</th>
+                <th>Rota</th>
+                <th>Detalhe</th>
+                <th>Local / Dispositivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ev in analytics_recent %}
+              <tr>
+                <td class="font-mono text-xs">{{ ev.occurred_at }}</td>
+                <td>
+                  <span class="badge badge-xs badge-outline">{{ ev.event_type }}</span>
+                  <span class="font-mono text-[10px] text-base-content/60">{{ ev.event_name }}</span>
+                </td>
+                <td class="font-mono text-xs">{{ ev.actor_label }}</td>
+                <td class="font-mono text-xs">{{ ev.path }}</td>
+                <td class="font-mono text-xs max-w-44 truncate">{{ ev.detail }}</td>
+                <td class="text-xs max-w-48 truncate">{{ ev.location_device }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Webhooks Stripe e Auditoria -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <section class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <h2 class="card-title text-lg">{{ t.admin_webhooks_heading }}</h2>
+        <div class="overflow-x-auto">
+          <table class="table table-xs">
+            <thead>
+              <tr>
+                <th>UTC</th>
+                <th>Evento</th>
+                <th>Org</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ev in webhook_events %}
+              <tr>
+                <td class="font-mono text-xs">{{ ev.received_at }}</td>
+                <td>
+                  <div class="font-mono text-xs">{{ ev.event_type }}</div>
+                  <div class="font-mono text-[10px] text-base-content/50">{{ ev.stripe_event_id }}</div>
+                </td>
+                <td class="font-mono text-xs">{% if let Some(slug) = ev.org_slug %}@{{ slug }}{% else %}-{% endif %}</td>
+                <td>
+                  <span class="badge badge-xs {% if ev.processing_status == "processed" %}badge-success{% else if ev.processing_status == "ignored" %}badge-ghost{% else %}badge-error{% endif %}">
+                    {{ ev.processing_status }}
+                  </span>
+                  {% if let Some(msg) = ev.error_message %}
+                  <div class="text-[10px] text-base-content/60 max-w-44 truncate">{{ msg }}</div>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <h2 class="card-title text-lg">{{ t.admin_audit_heading }}</h2>
+        <div class="overflow-x-auto">
+          <table class="table table-xs">
+            <thead>
+              <tr>
+                <th>UTC</th>
+                <th>Ator</th>
+                <th>Ação</th>
+                <th>Alvo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for log in audit_logs %}
+              <tr>
+                <td class="font-mono text-xs">{{ log.created_at }}</td>
+                <td class="font-mono text-xs">{% if let Some(actor) = log.actor_email %}{{ actor }}{% else %}system{% endif %}</td>
+                <td class="font-mono text-xs">{{ log.action }}</td>
+                <td class="font-mono text-xs max-w-36 truncate">{% if let Some(tgt) = log.target %}{{ tgt }}{% else %}-{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+{% endblock %}
